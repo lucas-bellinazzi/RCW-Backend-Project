@@ -1,0 +1,94 @@
+version: "3.8"
+
+networks:
+  fabric_net:
+    driver: bridge
+
+volumes:
+  orderer_data:
+  peer0_org1_data:
+  couchdb_data:
+
+services:
+  orderer.example.com:
+    image: hyperledger/fabric-orderer:2.5
+    container_name: orderer.example.com
+    environment:
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_GENESISMETHOD=file
+      - ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/genesis.block
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: orderer
+    volumes:
+      - ./fabric-network/system-genesis-block/genesis.block:/var/hyperledger/orderer/genesis.block
+      - ./fabric-network/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp:/var/hyperledger/orderer/msp
+      - orderer_data:/var/hyperledger/production/orderer
+    ports:
+      - "7050:7050"
+    networks:
+      - fabric_net
+
+  couchdb:
+    image: couchdb:3.3
+    container_name: couchdb
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    ports:
+      - "5984:5984"
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    networks:
+      - fabric_net
+
+  peer0.org1.example.com:
+    image: hyperledger/fabric-peer:2.5
+    container_name: peer0.org1.example.com
+    environment:
+      - CORE_PEER_ID=peer0.org1.example.com
+      - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
+      - CORE_PEER_LOCALMSPID=Org1MSP
+      - CORE_PEER_MSPCONFIGPATH=/etc/hyperledger/peer/msp
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
+    depends_on:
+      - orderer.example.com
+      - couchdb
+    command: peer node start
+    volumes:
+      - ./fabric-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/msp:/etc/hyperledger/peer/msp
+      - ./fabric-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls:/etc/hyperledger/peer/tls
+      - peer0_org1_data:/var/hyperledger/production
+    ports:
+      - "7051:7051"
+      - "7053:7053"
+    networks:
+      - fabric_net
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: rcw-api
+    env_file:
+      - ./api/.env
+    environment:
+      - FABRIC_CCP_PATH=/app/network/connection-org1.yaml
+      - FABRIC_WALLET_PATH=/app/wallet
+    volumes:
+      - ./api:/app
+      - ./fabric-network/organizations/peerOrganizations/org1.example.com/connection-org1.yaml:/app/network/connection-org1.yaml
+      - ./wallet:/app/wallet
+    ports:
+      - "5000:5000"
+    depends_on:
+      - peer0.org1.example.com
+      - orderer.example.com
+    networks:
+      - fabric_net
