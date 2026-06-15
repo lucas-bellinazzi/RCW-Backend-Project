@@ -55,22 +55,21 @@ class UserService:
         updated_user = self.user_repository.update_user(user, user_data)
         return user_output_admin.dump(updated_user)
     
-def delete_user(self, user_id):
+    def delete_user(self, user_id):
+        current_user = self.auth_service.return_user_from_token()
 
-    current_user = self.auth_service.return_user_from_token()
+        if not current_user:
+            raise ValueError("Something went wrong")
+        if current_user.id == user_id:
+            raise ValueError("You are not allowed to perform this action")
 
-    if not current_user:
-        raise ValueError("Something went wrong")
-    if current_user.id == user_id:
-        raise ValueError("You are not allowed to perform this action")
+        user = self.user_repository.get_user(user_id)  
 
-    user = self.user_repository.get_user(user_id)  
+        if not user:
+            raise NotFound("User not found")
+        if user.role == UserRole.ADMIN.value:
+            raise ValueError("You cannot delete an admin user")
 
-    if not user:
-        raise NotFound("User not found")
-    if user.role == UserRole.ADMIN.value:
-        raise ValueError("You cannot delete an admin user")
+        self.user_repository.delete_user(user)
 
-    self.user_repository.delete_user(user)
-
-    return None
+        return None
